@@ -153,6 +153,38 @@
     margin: 4px 0 24px;
   }
 
+  /* Filter bar + sortable headers */
+  .filterbar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .filterbar label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--subtle);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .filterbar select {
+    font-family: 'Poppins', Arial, sans-serif;
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--heading);
+    cursor: pointer;
+  }
+  .showing { font-size: 12px; color: var(--subtle); margin-left: auto; }
+  thead th.sortable { cursor: pointer; user-select: none; }
+  thead th.sortable:hover { background: var(--energetic); }
+  body[data-theme="dark"] thead th.sortable:hover { background: #23274E; }
+  .sort-ind { font-size: 9px; margin-left: 4px; }
+
   /* Stat row */
   .stats { display: flex; gap: 14px; margin-bottom: 26px; flex-wrap: wrap; }
   .stat {
@@ -392,6 +424,11 @@
 
   <div id="view-dashboard">
     <div class="stats" id="statRow"></div>
+    <div class="filterbar">
+      <label>Attended <select id="fAtt" onchange="setFilter()"></select></label>
+      <label>Submissions <select id="fSub" onchange="setFilter()"></select></label>
+      <span class="showing" id="showingCount"></span>
+    </div>
     <div class="card">
       <table id="attTable"></table>
     </div>
@@ -650,31 +687,93 @@ function renderStats() {
     <div class="stat"><div class="num">${totalSubs}</div><div class="lbl">Lessons Learned submissions</div></div>`;
 }
 
-function renderTable() {
-  let html = "<thead><tr><th>Name</th>";
-  SESSIONS.forEach(s => {
-    html += `<th><span class="sess-date">${s.date}</span><span class="sess-title">${s.title}</span></th>`;
-  });
-  html += "<th>Sessions</th><th>Submissions</th></tr></thead><tbody>";
+const tableState = { sortKey: "name", sortDir: 1, fAtt: "all", fSub: "all" };
 
-  PEOPLE.forEach(p => {
-    const total = p.att.reduce((a,b)=>a+b,0);
-    const subs = subCount(p.name);
-    html += `<tr><td>${p.name}</td>`;
-    p.att.forEach(a => {
+function setFilter() {
+  tableState.fAtt = document.getElementById("fAtt").value;
+  tableState.fSub = document.getElementById("fSub").value;
+  renderTable();
+}
+
+function setSort(key) {
+  if (tableState.sortKey === key) {
+    tableState.sortDir *= -1;
+  } else {
+    tableState.sortKey = key;
+    tableState.sortDir = (key === "name") ? 1 : -1; /* numbers start high-to-low, names A-Z */
+  }
+  renderTable();
+}
+
+function populateFilters() {
+  const attVals = [...new Set(PEOPLE.map(p => p.att.reduce((a,b)=>a+b,0)))].sort((a,b)=>b-a);
+  const subVals = [...new Set(PEOPLE.map(p => subCount(p.name)))].sort((a,b)=>b-a);
+  const fill = (id, vals) => {
+    document.getElementById(id).innerHTML =
+      `<option value="all">All</option>` + vals.map(v => `<option value="${v}">${v}</option>`).join("");
+  };
+  fill("fAtt", attVals);
+  fill("fSub", subVals);
+}
+
+function renderTable() {
+  let rows = PEOPLE.map(p => ({
+    name: p.name,
+    att: p.att,
+    total: p.att.reduce((a,b)=>a+b,0),
+    subs: subCount(p.name)
+  }));
+
+  if (tableState.fAtt !== "all") rows = rows.filter(r => r.total === Number(tableState.fAtt));
+  if (tableState.fSub !== "all") rows = rows.filter(r => r.subs === Number(tableState.fSub));
+
+  const keyVal = r => {
+    const k = tableState.sortKey;
+    if (k === "name") return r.name;
+    if (k === "total") return r.total;
+    if (k === "subs") return r.subs;
+    return r.att[Number(k.slice(1))]; /* s0..s3 = session columns */
+  };
+  rows.sort((a, b) => {
+    const va = keyVal(a), vb = keyVal(b);
+    let cmp = (typeof va === "string") ? va.localeCompare(vb) : va - vb;
+    if (cmp === 0) cmp = a.name.localeCompare(b.name) * tableState.sortDir; /* stable name tiebreak */
+    return cmp * tableState.sortDir;
+  });
+
+  const ind = key => tableState.sortKey === key
+    ? `<span class="sort-ind">${tableState.sortDir === 1 ? "&#9650;" : "&#9660;"}</span>` : "";
+
+  let html = `<thead><tr><th class="sortable" onclick="setSort('name')">Name${ind("name")}</th>`;
+  SESSIONS.forEach((s, i) => {
+    html += `<th class="sortable" onclick="setSort('s${i}')"><span class="sess-date">${s.date}${ind("s"+i)}</span><span class="sess-title">${s.title}</span></th>`;
+  });
+  html += `<th class="sortable" onclick="setSort('total')">Attended${ind("total")}</th>`;
+  html += `<th class="sortable" onclick="setSort('subs')">Submissions${ind("subs")}</th></tr></thead><tbody>`;
+
+  rows.forEach(r => {
+    html += `<tr><td>${r.name}</td>`;
+    r.att.forEach(a => {
       html += `<td><span class="dot ${a ? "on" : "off"}"></span></td>`;
     });
-    html += `<td class="total">${total} of ${SESSIONS.length}</td>`;
-    html += `<td class="subs ${subs ? "some" : "zero"}">${subs}</td></tr>`;
+    html += `<td class="total">${r.total} of ${SESSIONS.length}</td>`;
+    html += `<td class="subs ${r.subs ? "some" : "zero"}">${r.subs}</td></tr>`;
   });
+  if (!rows.length) {
+    html += `<tr><td colspan="${SESSIONS.length + 3}" style="text-align:center;color:var(--zero);padding:24px">Nobody matches these filters</td></tr>`;
+  }
 
   html += "</tbody><tfoot><tr><td>Attended</td>";
   SESSIONS.forEach((s, i) => {
-    const n = PEOPLE.reduce((sum, p) => sum + p.att[i], 0);
+    const n = rows.reduce((sum, r) => sum + r.att[i], 0);
     html += `<td>${n}</td>`;
   });
-  html += `<td></td><td>${LESSONS.length}</td></tr></tfoot>`;
+  const subTotal = rows.reduce((sum, r) => sum + r.subs, 0);
+  html += `<td></td><td>${subTotal}</td></tr></tfoot>`;
   document.getElementById("attTable").innerHTML = html;
+
+  document.getElementById("showingCount").textContent =
+    rows.length === PEOPLE.length ? `Showing all ${PEOPLE.length} people` : `Showing ${rows.length} of ${PEOPLE.length} people`;
 }
 
 function field(label, value) {
@@ -821,6 +920,7 @@ function toggleTheme() {
 
 /* init */
 renderStats();
+populateFilters();
 renderTable();
 renderLessons();
 renderLeaderboard();
