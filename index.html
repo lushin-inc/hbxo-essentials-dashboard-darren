@@ -272,6 +272,8 @@
     user-select: none;
   }
   .entry-head .who { font-weight: 500; color: var(--heading); font-size: 14.5px; flex: 1; }
+  .entry-head .ed { display: block; font-size: 11.5px; font-weight: 400; color: var(--subtle); margin-top: 1px; }
+  .no-subs { font-size: 13px; color: var(--zero); padding: 4px 2px 0; }
   .badge {
     font-size: 11.5px;
     font-weight: 500;
@@ -662,6 +664,17 @@ const LESSONS = [
   }
 ];
 
+/* Team / manager assignments from the Hubexo org chart. Names must match PEOPLE.
+   To move someone, move their name between member lists. */
+const TEAMS = [
+  { team: "Strategic Contractors",   manager: "Darren Kerr", members: ["Jen Mack","Josh Puvogel","Mike Strickland"] },
+  { team: "Strategic BPM",           manager: "Darren Kerr", members: ["Ken Mosier","Lance Daughtry","Robert Scott"] },
+  { team: "AE Strategic",            manager: "Darren Kerr", members: ["Brittany Moss","Josh Struletz","Mark Barretto"] },
+  { team: "Contractors Mid Market",  manager: "Harry Evans", members: ["Devon Semler","Joseph Shelton","Michael Ciccarelli","Nicole Speck","Sabrina Brackett"] },
+  { team: "Mid Market BPM",          manager: "Harry Evans", members: ["John Mathieu","Kim Lamas","Kyle Jacox","Marlo Franklin","Vince Arbuiso"] },
+  { team: "Alex's Team",             manager: "Alex DeLoach", members: ["Nicole Crader"] }
+];
+
 /* Lessons-learned sessions map (index into groups shown on Lessons tab).
    session 1 = Jun 25 form window, 2 = Jul 9, 3 = Jul 16. */
 const LESSON_GROUPS = [
@@ -782,20 +795,26 @@ function field(label, value) {
 }
 
 function renderLessons() {
+  const dateOf = s => (LESSON_GROUPS.find(g => g.key === s) || {}).date || "";
   let html = "";
-  LESSON_GROUPS.forEach(g => {
-    const items = LESSONS.filter(l => l.session === g.key);
-    if (!items.length) return;
+  TEAMS.forEach(t => {
+    const items = LESSONS
+      .filter(l => t.members.includes(l.name))
+      .sort((a, b) => a.session - b.session || a.name.localeCompare(b.name));
     html += `<div class="session-group">
-      <div class="session-head"><span class="sd">${g.date}</span><span class="st">${g.title}</span></div>`;
+      <div class="session-head"><span class="sd">${t.manager}</span><span class="st">${t.team}</span></div>`;
+    if (!items.length) {
+      html += `<div class="no-subs">No submissions yet</div></div>`;
+      return;
+    }
     items.forEach((l, idx) => {
       const badges = [];
       if (l.confidence != null) badges.push(`<span class="badge conf">Confidence ${l.confidence}/10</span>`);
       if (l.applied === "Yes") badges.push(`<span class="badge applied">Applied live</span>`);
       if (l.revenue) badges.push(`<span class="badge rev">${l.revenue}</span>`);
-      html += `<div class="entry" id="e-${g.key}-${idx}">
+      html += `<div class="entry">
         <div class="entry-head" onclick="this.parentElement.classList.toggle('open')">
-          <span class="who">${l.name}</span>
+          <span class="who">${l.name}<span class="ed">${dateOf(l.session)} &middot; ${LESSON_GROUPS.find(g=>g.key===l.session).title}</span></span>
           ${badges.join("")}
           <span class="chev"></span>
         </div>
